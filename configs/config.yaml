@@ -1,0 +1,44 @@
+# 项目基础配置
+project:
+  name: "pattern-transform"
+  version: "0.1.0"
+  description: "Transform carpet effect images to flat patterns"
+
+# 系统配置
+system:
+  device: "cpu"
+  num_workers: 0
+  seed: 42
+
+# 模型配置
+model:
+  name: "PatternNet"
+  pretrained: true
+  encoder: "resnet18"
+  feature_dim: 512
+  use_lightweight: true
+
+# 训练配置
+train:
+  batch_size: 1
+  epochs: 100
+  learning_rate: 0.001
+  save_interval: 10
+  loss_weights:
+    l1: 1.0
+    perceptual: 0.1
+
+# 数据配置
+data:
+  input_size: [640, 640]
+  augmentation: true
+  train_ratio: 0.8
+  raw_dir: "data/raw"
+  batch_size: 1
+  num_workers: 0
+
+# 输出配置
+output:
+  save_dir: "outputs"
+  checkpoint_dir: "checkpoints"
+  log_dir: "logs"
