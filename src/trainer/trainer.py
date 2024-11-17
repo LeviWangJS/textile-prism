@@ -7,7 +7,7 @@ from ..models.pattern_net import PatternNet
 from ..models.losses import PatternLoss
 from ..data.dataloader import create_dataloader
 from ..utils.logger import setup_logger
-from ..utils.visualization import save_image
+from ..utils.visualizer import save_image
 
 class Trainer:
     def __init__(self, config: Dict):

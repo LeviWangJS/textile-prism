@@ -47,7 +47,9 @@ class PatternTransformer(nn.Module):
             d_model=config['model']['feature_dim'],
             nhead=8,
             dim_feedforward=2048,
-            dropout=0.1
+            dropout=0.1,
+            batch_first=True,
+            norm_first=True
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=6)
         

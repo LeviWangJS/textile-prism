@@ -31,3 +31,7 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Runs
+runs/
+runs/*

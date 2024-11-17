@@ -6,7 +6,7 @@ project:
 
 # 系统配置
 system:
-  device: "cpu"
+  device: "mps"
   num_workers: 2
   seed: 42
 
@@ -17,22 +17,64 @@ model:
   encoder: "resnet18"
   feature_dim: 512
   use_lightweight: true
+  transformer:
+    dim: 256
+    num_heads: 8
+    dim_feedforward: 2048
+    dropout: 0.1
+    batch_first: true
 
 # 训练配置
 train:
-  batch_size: 2
+  batch_size: 1
   epochs: 100
   learning_rate: 0.001
-  save_interval: 5
-  gradient_accumulation: 4
+  save_interval: 10
+  val_interval: 5
+  
+  # 优化器配置
+  optimizer:
+    type: 'adam'
+    beta1: 0.9
+    beta2: 0.999
+    weight_decay: 0.01
+    lr: 0.001
+
+  # 学习率调度器
+  scheduler:
+    type: 'reduce_on_plateau'
+    warmup_epochs: 5
+    warmup_lr_init: 0.000001
+    factor: 0.5
+    patience: 5
+    min_lr: 0.000001
+    mode: 'min'
+
+  # 早停配置
+  early_stopping:
+    enabled: true
+    patience: 15
+    min_delta: 0.003
+    mode: 'min'
+    verbose: true
+
+  # 梯度裁剪配置
+  max_grad_norm: 1.0  # 最大梯度范数
+  grad_logging:
+    enabled: true
+    frequency: 10  # 每多少个batch记录一次梯度信息
+
   loss_weights:
-    l1: 1.0
-    perceptual: 0.1
+    l1_loss: 1.0
+    perceptual_loss: 0.1
+    # 添加其他损失项的权重
 
 # 数据配置
 data:
   input_size: [640, 640]
-  augmentation: true
+  augmentation:
+    enabled: true
+    prob: 0.5
   train_ratio: 0.8
   raw_dir: "data/raw"
   batch_size: 1
@@ -43,3 +85,41 @@ output:
   save_dir: "outputs"
   checkpoint_dir: "checkpoints"
   log_dir: "logs"
+
+# 损失函数配置
+loss:
+  lambda_l1: 1.0
+  lambda_perceptual: 0.1
+  vgg_layers: [3, 8, 15, 22]
+  perceptual_weights: [1.0, 1.0, 1.0, 1.0]
+
+# 报告配置
+report:
+  formats:
+    - html
+    - markdown
+    - pdf
+    - notebook
+  
+  sections:
+    - training_summary
+    - performance_metrics
+    - visualizations
+    - recommendations
+  
+  visualization:
+    include_loss_curves: true
+    include_lr_curves: true
+    include_predictions: true
+    include_attention_maps: true
+
+# 可视化配置
+visualization:
+  save_dir: 'runs'
+  viz_interval: 1
+  save_attention_maps: true
+  plot_predictions: true
+  save_interval: 100  # 每隔多少个batch保存一次图像
+  gif_fps: 10        # GIF帧率
+  gif_quality: 95    # GIF质量
+  save_gifs: true    # 是否保存GIF
