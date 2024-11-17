@@ -24,12 +24,12 @@ pattern-extract/
 
 ```bash
 # 创建虚拟环境
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 .venv\Scripts\activate     # Windows
 
 # 安装依赖
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ## 数据集结构
@@ -54,10 +54,10 @@ collect status
 
 ```bash
 # 测试环境
-python src/test_run.py
+python3 src/test_run.py
 
 # 开始训练
-python src/train.py
+python3 src/train.py
 ```
 
 ## License

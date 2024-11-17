@@ -4,73 +4,60 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset
 from typing import Dict
+from PIL import Image
+from torchvision import transforms
 
 class CarpetDataset(Dataset):
     def __init__(self, config: Dict, mode: str = 'train'):
+        super().__init__()
         self.config = config
         self.mode = mode
         self.data_dir = Path(config['data']['raw_dir'])
         
-        # 打印调试信息
-        print(f"初始化数据集：{mode}")
-        print(f"数据目录：{self.data_dir}")
+        # 获取所有数据目录
+        self.data_folders = sorted([d for d in self.data_dir.iterdir() if d.is_dir()])
+        print(f"找到数据集目录：{len(self.data_folders)}个")
         
-        # 获取所有数据集目录
-        self.sample_dirs = sorted(list(self.data_dir.glob("set_*")))
-        print(f"找到数据集目录：{len(self.sample_dirs)}个")
-        
-        if not self.sample_dirs:
-            raise ValueError(f"未找到数据集！请检查目录：{self.data_dir}")
-        
-        # 数据集划分
+        # 划分训练集和验证集
+        train_size = int(len(self.data_folders) * config['data']['train_ratio'])
         if mode == 'train':
-            self.sample_dirs = self.sample_dirs[:int(len(self.sample_dirs) * 0.8)]
-        else:
-            self.sample_dirs = self.sample_dirs[int(len(self.sample_dirs) * 0.8):]
-        
-        print(f"{mode}模式使用{len(self.sample_dirs)}个数据集")
-        
-        # 验证每个数据集的完整性
-        valid_dirs = []
-        for dir_path in self.sample_dirs:
-            input_path = dir_path / "input.jpg"
-            target_path = dir_path / "target.jpg"
-            if input_path.exists() and target_path.exists():
-                valid_dirs.append(dir_path)
-            else:
-                print(f"警告：数据集{dir_path}不完整，已跳过")
-        
-        self.sample_dirs = valid_dirs
-        print(f"有效数据集数量：{len(self.sample_dirs)}")
+            self.data_folders = self.data_folders[:train_size]
+            print(f"train模式使用{len(self.data_folders)}个数据集")
+        else:  # val模式
+            self.data_folders = self.data_folders[train_size:]
+            print(f"val模式使用{len(self.data_folders)}个数据集")
+    
+        print(f"有效数据集数量：{len(self.data_folders)}")
     
     def __len__(self):
-        return len(self.sample_dirs)
+        return len(self.data_folders) * 2  # 每个文件夹有2张图片
     
     def __getitem__(self, idx):
-        sample_dir = self.sample_dirs[idx]
+        folder_idx = idx // 2
+        img_idx = idx % 2
+        
+        folder = self.data_folders[folder_idx]
+        images = sorted(list(folder.glob('*.jpg')))
         
         # 读取图像
-        input_path = sample_dir / "input.jpg"
-        target_path = sample_dir / "target.jpg"
+        img = Image.open(images[img_idx])
         
-        # 读取并预处理图像
-        input_img = cv2.imread(str(input_path))
-        input_img = cv2.cvtColor(input_img, cv2.COLOR_BGR2RGB)
-        
-        target_img = cv2.imread(str(target_path))
-        target_img = cv2.cvtColor(target_img, cv2.COLOR_BGR2RGB)
-        
-        # 调整大小
+        # 调整图像大小
         input_size = self.config['data']['input_size']
-        input_img = cv2.resize(input_img, (input_size[0], input_size[1]))
-        target_img = cv2.resize(target_img, (input_size[0], input_size[1]))
+        if isinstance(input_size, int):
+            input_size = (input_size, input_size)
+        img = img.resize(input_size)
         
         # 转换为张量
-        input_tensor = torch.from_numpy(input_img.transpose(2, 0, 1)).float() / 255.0
-        target_tensor = torch.from_numpy(target_img.transpose(2, 0, 1)).float() / 255.0
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
         
-        return {
-            'input': input_tensor,
-            'target': target_tensor,
-            'path': str(sample_dir)
-        } 
+        img_tensor = transform(img)
+        
+        # 第一张图作为输入，第二张图作为目标
+        if img_idx == 0:
+            return {'input': img_tensor, 'target': img_tensor}
+        else:
+            return {'input': img_tensor, 'target': img_tensor} 

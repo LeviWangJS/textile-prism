@@ -16,28 +16,40 @@ class DataCollector:
     
     def _validate_images(self, input_img: np.ndarray, target_img: np.ndarray) -> bool:
         """验证图像质量"""
-        # 检查最小分辨率
+        # 检查input图像最小分辨率
         if (input_img.shape[0] < self.min_resolution[1] or 
-            input_img.shape[1] < self.min_resolution[0] or
-            target_img.shape[0] < self.min_resolution[1] or
-            target_img.shape[1] < self.min_resolution[0]):
-            print(f"图像分辨率不足，最小要求：{self.min_resolution}")
+            input_img.shape[1] < self.min_resolution[0]):
+            print(f"输入图像分辨率不足，最小要求：{self.min_resolution}")
             return False
             
-        # 检查最大分辨率
+        # 检查target图像最小分辨率    
+        if (target_img.shape[0] < self.min_resolution[1] or
+            target_img.shape[1] < self.min_resolution[0]):
+            print(f"目标图像分辨率不足，最小要求：{self.min_resolution}")
+            return False
+            
+        # 检查input图像最大分辨率
         if (input_img.shape[0] > self.max_resolution[1] or 
-            input_img.shape[1] > self.max_resolution[0] or
-            target_img.shape[0] > self.max_resolution[1] or
+            input_img.shape[1] > self.max_resolution[0]):
+            print(f"输入图像分辨率过大，最大限制：{self.max_resolution}")
+            return False
+            
+        # 检查target图像最大分辨率
+        if (target_img.shape[0] > self.max_resolution[1] or
             target_img.shape[1] > self.max_resolution[0]):
-            print(f"图像分辨率过大，最大限制：{self.max_resolution}")
+            print(f"目标图像分辨率过大，最大限制：{self.max_resolution}")
             return False
             
         # 检查图像清晰度
         input_blur = cv2.Laplacian(cv2.cvtColor(input_img, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
         target_blur = cv2.Laplacian(cv2.cvtColor(target_img, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
         
-        if input_blur < 50 or target_blur < 50:  # 降低清晰度要求
-            print("图像清晰度不足")
+        if input_blur < 50:  # 检查输入图像清晰度
+            print(f"输入图像清晰度不足: {input_blur:.2f}")
+            return False
+            
+        if target_blur < 50:  # 检查目标图像清晰度
+            print(f"目标图像清晰度不足: {target_blur:.2f}")
             return False
             
         return True

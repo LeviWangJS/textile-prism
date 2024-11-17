@@ -7,7 +7,7 @@ project:
 # 系统配置
 system:
   device: "cpu"
-  num_workers: 0
+  num_workers: 2
   seed: 42
 
 # 模型配置
@@ -20,10 +20,11 @@ model:
 
 # 训练配置
 train:
-  batch_size: 1
+  batch_size: 2
   epochs: 100
   learning_rate: 0.001
-  save_interval: 10
+  save_interval: 5
+  gradient_accumulation: 4
   loss_weights:
     l1: 1.0
     perceptual: 0.1
@@ -35,7 +36,7 @@ data:
   train_ratio: 0.8
   raw_dir: "data/raw"
   batch_size: 1
-  num_workers: 0
+  num_workers: 2
 
 # 输出配置
 output:

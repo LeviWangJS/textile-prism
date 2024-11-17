@@ -32,33 +32,58 @@ class SpatialTransformer(nn.Module):
 class PatternTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
         
-        # 编码器
-        backbone = models.resnet50(pretrained=config.model.pretrained)
+        # 加载预训练的ResNet作为特征提取器
+        backbone = models.resnet50(pretrained=config['model']['pretrained'])
+        
+        # 移除最后的全连接层
         self.encoder = nn.Sequential(*list(backbone.children())[:-2])
         
-        # 空间变换
-        self.transformer = SpatialTransformer()
+        # 添加投影层，将特征维度从2048降到config指定的维度
+        self.projection = nn.Conv2d(2048, config['model']['feature_dim'], kernel_size=1)
         
-        # 解码器
+        # 添加transformer层
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=config['model']['feature_dim'],
+            nhead=8,
+            dim_feedforward=2048,
+            dropout=0.1
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        
+        # 解码器网络
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(2048, 1024, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(1024, 512, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(config['model']['feature_dim'], 256, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
             nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(True),
+            nn.ReLU(inplace=True),
             nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(64, 3, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 3, kernel_size=3, padding=1),
             nn.Tanh()
         )
         
     def forward(self, x):
+        # 编码
         features = self.encoder(x)
+        
+        # 投影到较低维度
+        features = self.projection(features)
+        
+        # 重塑特征图为序列
+        batch_size, channels, height, width = features.shape
+        features = features.flatten(2).permute(2, 0, 1)  # [H*W, B, C]
+        
+        # 通过transformer
         transformed = self.transformer(features)
+        
+        # 重塑回特征图
+        transformed = transformed.permute(1, 2, 0).view(batch_size, channels, height, width)
+        
+        # 解码
         output = self.decoder(transformed)
         return output 
