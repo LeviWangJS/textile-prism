@@ -109,7 +109,7 @@ def train(config):
             }, str(checkpoint_path))
             
             # 可视化一些结果
-            visualize_results(model, val_loader, epoch + 1, config)
+            visualize_results(model, val_loader, epoch + 1, config, device)
 
 def validate(model, val_loader, criterion, device):
     model.eval()
@@ -125,7 +125,7 @@ def validate(model, val_loader, criterion, device):
     
     return total_loss / len(val_loader)
 
-def visualize_results(model, val_loader, epoch, config):
+def visualize_results(model, val_loader, epoch, config, device):
     """保存一些验证集的可视化结果"""
     model.eval()
     save_dir = Path(config['output']['log_dir']) / f'epoch_{epoch}'
@@ -136,7 +136,7 @@ def visualize_results(model, val_loader, epoch, config):
             if i >= 5:  # 只保存前5个样本
                 break
                 
-            inputs = batch['input'].to(model.device)
+            inputs = batch['input'].to(device)
             outputs = model(inputs)
             
             # 保存输入、输出和目标图像
