@@ -58,6 +58,9 @@ python3 src/test_run.py
 
 # 开始训练
 python3 src/train.py
+
+# 开启实时观测
+tensorboard --logdir=runs
 ```
 
 ## License

@@ -1,6 +1,8 @@
 import math
 import torch
 from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim import lr_scheduler
+from typing import Optional, Union, Dict
 
 class WarmupLRScheduler(_LRScheduler):
     """带预热的学习率调度器基类"""
@@ -75,3 +77,49 @@ class ReduceLROnPlateauWithWarmup:
     def get_last_lr(self):
         """返回当前学习率"""
         return [group['lr'] for group in self.optimizer.param_groups] 
+
+class LRSchedulerWrapper:
+    def __init__(self, optimizer, config: Dict):
+        self.optimizer = optimizer
+        self.scheduler_config = config['train']['scheduler']
+        self.scheduler_type = self.scheduler_config['type']
+        
+        # 确保数值参数为float类型
+        params = self.scheduler_config['params']
+        if self.scheduler_type == 'step':
+            self.scheduler = lr_scheduler.StepLR(
+                optimizer,
+                step_size=int(params['step_size']),
+                gamma=float(params['gamma'])
+            )
+        elif self.scheduler_type == 'cosine':
+            self.scheduler = lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=int(params['T_max']),
+                eta_min=float(params['eta_min'])
+            )
+        elif self.scheduler_type == 'reduce_plateau':
+            self.scheduler = lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode=params['mode'],
+                factor=float(params['factor']),
+                patience=int(params['patience']),
+                min_lr=float(params['min_lr'])
+            )
+        else:
+            raise ValueError(f"Unsupported scheduler type: {self.scheduler_type}")
+    
+    def step(self, metrics: Optional[float] = None):
+        """统一的step接口"""
+        if self.scheduler_type == 'reduce_plateau':
+            if metrics is None:
+                raise ValueError("ReduceLROnPlateau requires metrics for step()")
+            self.scheduler.step(metrics)
+        else:
+            self.scheduler.step()
+    
+    def get_last_lr(self) -> float:
+        """获取当前学习率"""
+        if self.scheduler_type == 'reduce_plateau':
+            return self.optimizer.param_groups[0]['lr']
+        return self.scheduler.get_last_lr()[0] 

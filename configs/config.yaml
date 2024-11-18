@@ -42,20 +42,25 @@ train:
 
   # 学习率调度器
   scheduler:
-    type: 'reduce_on_plateau'
-    warmup_epochs: 5
-    warmup_lr_init: 0.000001
-    factor: 0.5
-    patience: 5
-    min_lr: 0.000001
-    mode: 'min'
+    type: 'cosine'
+    params:
+      # Step LR 参数
+      step_size: 30
+      gamma: 0.1
+      # Cosine LR 参数
+      T_max: 100
+      eta_min: 0.000001
+      # ReduceLROnPlateau 参数
+      factor: 0.1
+      patience: 10
+      min_lr: 0.000001
+      mode: 'min'
 
   # 早停配置
   early_stopping:
     enabled: true
-    patience: 15
-    min_delta: 0.003
-    mode: 'min'
+    patience: 10
+    min_delta: 0.001
     verbose: true
 
   # 梯度裁剪配置
@@ -74,7 +79,17 @@ data:
   input_size: [640, 640]
   augmentation:
     enabled: true
-    prob: 0.5
+    prob: 0.8
+    color_jitter:
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+      hue: 0.05
+    affine:
+      degrees: 15
+      translate: [0.1, 0.1]
+      scale: [0.9, 1.1]
+      shear: 5
   train_ratio: 0.8
   raw_dir: "data/raw"
   batch_size: 1
@@ -90,6 +105,8 @@ output:
 loss:
   lambda_l1: 1.0
   lambda_perceptual: 0.1
+  lambda_style: 0.5
+  lambda_ssim: 0.3
   vgg_layers: [3, 8, 15, 22]
   perceptual_weights: [1.0, 1.0, 1.0, 1.0]
 
@@ -123,3 +140,17 @@ visualization:
   gif_fps: 10        # GIF帧率
   gif_quality: 95    # GIF质量
   save_gifs: true    # 是否保存GIF
+
+openai:
+  api_key: ${OPENAI_API_KEY}
+  
+training:
+  analysis_frequency: 200  # 每200个batch分析一次
+  min_analysis_interval: 60  # 最小分析间隔60秒
+  reference_generation: true
+  quality_threshold: 7.0  # 质量分数阈值
+
+debug:
+  save_images: false  # 设置为true时保存生成的图像
+paths:
+  output_dir: outputs  # 生成图像的保存目录

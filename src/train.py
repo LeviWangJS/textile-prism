@@ -41,9 +41,11 @@ from models.transformer import PatternTransformer
 from models.losses import PatternLoss
 from utils.logger import setup_logger
 from utils.visualizer import save_image, TrainingVisualizer
-from utils.config import load_config
+from utils.config import load_config, validate_scheduler_config
 from utils.early_stopping import EarlyStopping
-from utils.lr_scheduler import CosineAnnealingWarmup, ReduceLROnPlateauWithWarmup
+from utils.lr_scheduler import LRSchedulerWrapper
+from utils.openai_helper import OpenAIHelper
+from utils.smart_monitor import SmartTrainingMonitor
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -120,6 +122,9 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, max_grad_
     return total_loss / num_batches
 
 def train(config):
+    # 验证配置
+    validate_scheduler_config(config)
+    
     # 设置日志和设备
     logger = setup_logger(config)
     device = get_device()
@@ -171,71 +176,129 @@ def train(config):
     loss_weights = config['train'].get('loss_weights', None)
     
     best_val_loss = float('inf')
-    scheduler = ReduceLROnPlateauWithWarmup(
-        optimizer,
-        warmup_epochs=config['train']['scheduler'].get('warmup_epochs', 5),
-        warmup_lr_init=config['train']['scheduler'].get('warmup_lr_init', 1e-6),
-        factor=config['train']['scheduler'].get('factor', 0.5),
-        patience=config['train']['scheduler'].get('patience', 5),
-        min_lr=config['train']['scheduler'].get('min_lr', 1e-6),
-        mode=config['train']['scheduler'].get('mode', 'min')
-    )
+    scheduler = LRSchedulerWrapper(optimizer, config)
     
-    # 训练循环
-    for epoch in range(config['train']['epochs']):
-        train_loss = train_one_epoch(
-            model, 
-            train_loader, 
-            criterion, 
-            optimizer, 
-            device,
-            max_grad_norm=max_grad_norm,
-            loss_weights=loss_weights,
-            logger=logger
-        )
-        
-        # 验证
-        val_loss = validate(model, val_loader, criterion, device)
-        logger.info(f"Validation Loss: {val_loss:.4f}")
-        
-        # 更新学习率
-        scheduler.step(val_loss)
-        current_lr = optimizer.param_groups[0]['lr']
-        
-        # 更新可视化
-        visualizer.update_history(
-            epoch=epoch,
-            train_loss=train_loss,
-            val_loss=val_loss,
-            lr=current_lr
-        )
-        
-        # 保存最佳模型
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            save_checkpoint(model, optimizer, epoch, 'best_model.pth')
-            logger.info(f"Saved best model with validation loss: {val_loss:.4f}")
-        
-        # 早停检查
-        if early_stopping(val_loss):
-            logger.info(f"Early stopping triggered at epoch {epoch}")
-            break
+    # 初始化 TensorBoard
+    writer = SummaryWriter(log_dir=config['visualization']['save_dir'])
+    
+    # 初始化OpenAI助手和监控器
+    openai_helper = OpenAIHelper(config['openai']['api_key'], config)
+    smart_monitor = SmartTrainingMonitor(config, openai_helper)
+    
+    # 添加epoch级别的进度条
+    with tqdm(range(config['train']['epochs']), desc='Epochs') as epoch_pbar:
+        for epoch in epoch_pbar:
+            model.train()
+            train_loss = 0
             
-        # 更新进度条
-        progress_bar.update(1)
-        progress_bar.set_postfix({
-            'train_loss': f'{train_loss:.4f}',
-            'val_loss': f'{val_loss:.4f}',
-            'lr': f'{current_lr:.6f}'
-        })
+            # batch级别的进度条
+            with tqdm(train_loader, desc=f'Training Epoch {epoch+1}/{config["train"]["epochs"]}', 
+                     leave=False) as pbar:  # leave=False 让batch进度条在完成后消失
+                for batch_idx, batch in enumerate(pbar):
+                    # 获取数据
+                    inputs = batch['input'].to(device)
+                    targets = batch['target'].to(device)
+                    
+                    # 清零梯度
+                    optimizer.zero_grad()
+                    
+                    # 前向传播
+                    outputs = model(inputs)
+                    
+                    # 计算损失
+                    losses = criterion(outputs, targets)
+                    total_loss = losses['total']
+                    
+                    # 反向传播
+                    total_loss.backward()
+                    
+                    # 计算梯度范数
+                    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    
+                    # 更新参数
+                    optimizer.step()
+                    
+                    # 更新batch进度条
+                    train_loss += total_loss.item()
+                    current_lr = optimizer.param_groups[0]['lr']
+                    pbar.set_postfix({
+                        'train_loss': f'{train_loss/(batch_idx+1):.4f}',
+                        'lr': f'{current_lr:.6f}'
+                    })
+                    
+                    # 记录训练信息
+                    logger.info(f"Batch [{batch_idx}/{len(train_loader)}] "
+                              f"total: {total_loss.item():.4f} "
+                              f"l1: {losses['l1'].item():.4f} "
+                              f"perceptual: {losses['perceptual'].item():.4f} "
+                              f"Grad Norm: {grad_norm:.4f}")
+                    
+                    # 智能分析
+                    metrics = {
+                        'train_loss': train_loss/(batch_idx+1),
+                        'current_lr': current_lr,
+                        'grad_norm': grad_norm
+                    }
+                    metrics = smart_monitor.analyze_batch(
+                        epoch, batch_idx, outputs, targets, metrics
+                    )
+                    
+                    # 更新进度条
+                    pbar.set_postfix(metrics)
+            
+            # 计算平均训练损失
+            train_loss = train_loss / len(train_loader)
+            
+            # 验证
+            val_loss = validate(model, val_loader, criterion, device)
+            
+            # 更新epoch进度条
+            epoch_pbar.set_postfix({
+                'train_loss': f'{train_loss:.4f}',
+                'val_loss': f'{val_loss:.4f}',
+                'lr': f'{current_lr:.6f}'
+            })
+            
+            # 更新学习率调度器
+            scheduler.step(val_loss)
+            
+            # 记录指标
+            writer.add_scalar('Loss/train_epoch', train_loss, epoch)
+            writer.add_scalar('Loss/val', val_loss, epoch)
+            writer.add_scalar('LR/epoch', current_lr, epoch)
+            
+            # 更新可视化器
+            visualizer.update_history(epoch, train_loss, val_loss, current_lr)
+            visualizer.plot_losses(save=True)
+            
+            # 保存检查点和最佳模型
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                save_checkpoint(model, optimizer, epoch, 'best_model.pth')
+                logger.info(f"Saved best model with validation loss: {val_loss:.4f}")
+            
+            # 早停检查
+            if early_stopping(val_loss):
+                logger.info(f"Early stopping triggered at epoch {epoch}")
+                break
+            
+            # 获取epoch级别的建议
+            epoch_metrics = {
+                'train_loss': train_loss/len(train_loader),
+                'val_loss': val_loss,
+                'quality_score': metrics.get('quality_score', 0)
+            }
+            suggestions = smart_monitor.get_epoch_suggestions(epoch_metrics)
+            if suggestions:
+                logger.info(f"Training Suggestions: {suggestions}")
     
-    # 训练结束，创建GIF和清理
-    if config['visualization'].get('save_gifs', True):
-        visualizer.create_training_gif()
-    visualizer.cleanup()
+    # 训练结束，关闭writer
+    writer.close()
     
-    # 关闭进度条
-    progress_bar.close()
+    return {
+        'best_val_loss': best_val_loss,
+        'epochs_trained': epoch + 1
+    }
 
 def validate(model, val_loader, criterion, device):
     model.eval()
