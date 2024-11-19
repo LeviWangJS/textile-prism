@@ -46,6 +46,7 @@ from utils.early_stopping import EarlyStopping
 from utils.lr_scheduler import LRSchedulerWrapper
 from utils.openai_helper import OpenAIHelper
 from utils.smart_monitor import SmartTrainingMonitor
+from utils.feature_visualizer import FeatureVisualizer
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -165,6 +166,7 @@ def train(config):
     
     # 初始化可视化器
     visualizer = TrainingVisualizer(save_dir='logs')
+    feature_visualizer = FeatureVisualizer(save_dir=os.path.join('logs', 'feature_distributions'))
     
     # 创建训练进度条
     progress_bar = visualizer.create_progress_bar(config['train']['epochs'])
