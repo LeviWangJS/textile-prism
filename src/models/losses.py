@@ -111,3 +111,49 @@ class PatternLoss(nn.Module):
             'l1': l1,
             'perceptual': perceptual
         } 
+
+class EnhancedPatternLoss(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        
+        # 基础损失
+        self.l1_loss = nn.L1Loss()
+        self.mse_loss = nn.MSELoss()
+        self.perceptual_loss = PerceptualLoss(config)
+        self.style_loss = StyleLoss()
+        
+        # SSIM损失
+        self.ssim_loss = SSIM()
+        
+        # 获取权重
+        loss_config = config.get('loss', {})
+        self.lambda_l1 = loss_config.get('lambda_l1', 1.0)
+        self.lambda_perceptual = loss_config.get('lambda_perceptual', 0.1)
+        self.lambda_style = loss_config.get('lambda_style', 0.5)
+        self.lambda_ssim = loss_config.get('lambda_ssim', 0.3)
+        
+    def forward(self, pred, target):
+        # 计算各损失项
+        l1 = self.l1_loss(pred, target)
+        mse = self.mse_loss(pred, target)
+        perceptual = self.perceptual_loss(pred, target)
+        style = self.style_loss(pred, target)
+        ssim = 1 - self.ssim_loss(pred, target)
+        
+        # 组合损失
+        total_loss = (
+            self.lambda_l1 * l1 +
+            self.lambda_perceptual * perceptual +
+            self.lambda_style * style +
+            self.lambda_ssim * ssim
+        )
+        
+        return {
+            'total': total_loss,
+            'l1': l1,
+            'mse': mse,
+            'perceptual': perceptual,
+            'style': style,
+            'ssim': ssim
+        } 
