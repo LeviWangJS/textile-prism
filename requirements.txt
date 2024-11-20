@@ -1,15 +1,15 @@
-torch
-torchvision
-numpy
-Pillow
-matplotlib
-seaborn
-tensorboard
-pandas
 
+Pillow
 jinja2
 markdown
-
+matplotlib
+numpy
+openai==1.54.4
+pandas
 psutil
-tqdm
 pyyaml
+seaborn
+tensorboard
+torch
+torchvision
+tqdm

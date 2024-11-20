@@ -8,6 +8,7 @@ from ..models.losses import PatternLoss
 from ..data.dataloader import create_dataloader
 from ..utils.logger import setup_logger
 from ..utils.visualizer import save_image
+from ..utils.lr_scheduler import LRSchedulerWrapper
 
 class Trainer:
     def __init__(self, config: Dict):
@@ -36,6 +37,9 @@ class Trainer:
         
         self.checkpoint_dir = Path(config['output']['checkpoint_dir'])
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 创建scheduler
+        self.scheduler = LRSchedulerWrapper(self.optimizer, config)
     
     def train_epoch(self, epoch: int) -> Dict:
         """训练一个epoch"""
@@ -70,6 +74,10 @@ class Trainer:
                         outputs['outputs'][0],
                         self.output_dir / f'epoch_{epoch}_batch_{batch_idx}.png'
                     )
+        
+        # 在epoch结束时更新scheduler
+        if hasattr(self, 'scheduler'):
+            self.scheduler.step(val_loss)
         
         return {k: v.item() for k, v in losses.items()}
     

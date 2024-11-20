@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torchvision import transforms
+from torchvision.transforms import functional as F
+import random
+import numpy as np
 
 class SpatialTransformer(nn.Module):
     def __init__(self):
@@ -89,3 +93,47 @@ class PatternTransformer(nn.Module):
         # 解码
         output = self.decoder(transformed)
         return output 
+
+class PatternAugmentation:
+    def __init__(self, config):
+        self.prob = config['data']['augmentation']['prob']
+        self.input_size = config['data']['input_size']
+        
+        # 基础变换
+        self.basic_transform = transforms.Compose([
+            transforms.Resize(self.input_size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+        ])
+        
+        # 高级增强
+        self.augment_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomVerticalFlip(p=0.5),
+            transforms.RandomRotation(degrees=15),
+            transforms.ColorJitter(
+                brightness=0.1,
+                contrast=0.1,
+                saturation=0.1,
+                hue=0.05
+            ),
+            transforms.RandomAffine(
+                degrees=0,
+                translate=(0.1, 0.1),
+                scale=(0.9, 1.1),
+                shear=5
+            ),
+            transforms.RandomApply([
+                transforms.GaussianBlur(kernel_size=3)
+            ], p=0.3),
+        ])
+    
+    def __call__(self, image):
+        # 基础变换
+        image = self.basic_transform(image)
+        
+        # 概率应用高级增强
+        if random.random() < self.prob:
+            image = self.augment_transform(image)
+            
+        return image 
