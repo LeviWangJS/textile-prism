@@ -5,6 +5,7 @@ import sys
 import io
 import os
 from datetime import datetime
+from typing import Dict
 
 # 配置logger
 logger = logging.getLogger('pattern_transform')
@@ -44,9 +45,12 @@ from utils.visualizer import save_image, TrainingVisualizer
 from utils.config import load_config, validate_scheduler_config
 from utils.early_stopping import EarlyStopping
 from utils.lr_scheduler import LRSchedulerWrapper
-from utils.openai_helper import OpenAIHelper
+# from utils.openai_helper import OpenAIHelper
 from utils.smart_monitor import SmartTrainingMonitor
 from utils.feature_visualizer import FeatureVisualizer
+from optimization.auto_tuner import AutoTuner, OptimizationConfig, OptimizationStrategyGenerator
+from optimization.dynamic_tuner import DynamicTuner
+from utils.visualization import ParameterVisualizer, visualize_augmentations
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -122,7 +126,49 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, max_grad_
     
     return total_loss / num_batches
 
-def train(config):
+def validate_config(config: Dict) -> None:
+    """验证配置参数的类型和值"""
+    lr_config = config.get('train', {}).get('dynamic_tuning', {}).get('lr_adjust', {})
+    
+    # 验证学习率相关配置
+    required_float_params = ['min_lr', 'max_lr', 'adjust_threshold']
+    for param in required_float_params:
+        try:
+            lr_config[param] = float(lr_config[param])
+        except (ValueError, TypeError, KeyError):
+            raise ValueError(
+                f"Invalid {param} in config. Please ensure it's a valid number."
+            )
+    
+    # 验证值的合理性
+    if lr_config['min_lr'] >= lr_config['max_lr']:
+        raise ValueError("min_lr must be less than max_lr")
+    if lr_config['adjust_threshold'] <= 0:
+        raise ValueError("adjust_threshold must be positive")
+
+def check_augmentations(config: Dict):
+    """检查数据增强效果"""
+    dataset = CarpetDataset(config, mode='train')
+    
+    # 保存增强效果图
+    save_dir = 'visualization/augmentations'
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # 检查多个样本
+    for i in range(min(5, len(dataset))):
+        save_path = os.path.join(save_dir, f'augmentation_sample_{i}.png')
+        visualize_augmentations(dataset, i, n_samples=5, save_path=save_path)
+        
+    logger.info(f"Augmentation visualization saved to {save_dir}")
+
+def train(config: Dict):
+    # 在训练开始前检查数据增强
+    if config.get('debug', {}).get('check_augmentation', False):
+        check_augmentations(config)
+    
+    # 在训练开始前验证配置
+    validate_config(config)
+    
     # 验证配置
     validate_scheduler_config(config)
     
@@ -184,9 +230,16 @@ def train(config):
     writer = SummaryWriter(log_dir=config['visualization']['save_dir'])
     
     # 初始化OpenAI助手和监控器
-    openai_helper = OpenAIHelper(config['openai']['api_key'], config)
+    # openai_helper = OpenAIHelper(config['openai']['api_key'], config)
     smart_monitor = SmartTrainingMonitor(config, openai_helper)
     
+    # 初始化动态调整器
+    if config['train']['dynamic_tuning']['enabled']:
+        dynamic_tuner = DynamicTuner(config)
+        param_visualizer = ParameterVisualizer(save_dir=config['visualization']['save_dir'])
+    else:
+        dynamic_tuner = None
+        
     # 添加epoch级别的进度条
     with tqdm(range(config['train']['epochs']), desc='Epochs') as epoch_pbar:
         for epoch in epoch_pbar:
@@ -293,10 +346,65 @@ def train(config):
             suggestions = smart_monitor.get_epoch_suggestions(epoch_metrics)
             if suggestions:
                 logger.info(f"Training Suggestions: {suggestions}")
+            
+            # 批次级别的动态调整
+            if dynamic_tuner and batch_idx % config['train']['dynamic_tuning'].get('batch_adjust_freq', 10) == 0:
+                metrics = {
+                    'train_loss': train_loss/(batch_idx+1),
+                    'batch_idx': batch_idx,
+                    'epoch': epoch
+                }
+                
+                # 调整批次大小
+                if config['train']['dynamic_tuning']['batch_size_adjust']['enabled']:
+                    new_batch_size = dynamic_tuner.update_batch_size(train_loader, metrics)
+                    if new_batch_size != train_loader.batch_size:
+                        train_loader = update_dataloader(train_dataset, new_batch_size)
+                        
+            # epoch级别的动态调整
+            if dynamic_tuner:
+                metrics = {
+                    'train_loss': train_loss/len(train_loader),
+                    'val_loss': val_loss,
+                    'epoch': epoch
+                }
+                
+                # 调整学习率
+                if config['train']['dynamic_tuning']['lr_adjust']['enabled']:
+                    new_lr = dynamic_tuner.update_learning_rate(optimizer, metrics, epoch)
+                    
+                # 更新优化器的学习率
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                    
+                # 记录学习率变化
+                logger.info(f"Learning rate adjusted to: {new_lr}")
+                
+                # 如果使用wandb，也记录到wandb
+                if config.get('logging', {}).get('use_wandb', False):
+                    wandb.log({'learning_rate': new_lr}, step=epoch)
+                
+                # 调整模型参数
+                if config['train']['dynamic_tuning']['dropout_adjust']['enabled']:
+                    dynamic_tuner.update_model_params(model, metrics)
+                
+                # 可视化参数调整
+                if config['train']['dynamic_tuning']['logging']['visualization']:
+                    param_visualizer.log_parameters({
+                        'learning_rate': optimizer.param_groups[0]['lr'],
+                        'batch_size': train_loader.batch_size,
+                        'dropout': model.dropout.p if hasattr(model, 'dropout') else None,
+                        'train_loss': train_loss,
+                        'val_loss': val_loss
+                    }, epoch)
     
     # 训练结束，关闭writer
     writer.close()
     
+    # 训练结束，生成参数调整报告
+    if dynamic_tuner and config['train']['dynamic_tuning']['logging']['visualization']:
+        param_visualizer.generate_adjustment_report()
+        
     return {
         'best_val_loss': best_val_loss,
         'epochs_trained': epoch + 1
@@ -381,6 +489,51 @@ def setup_logging():
     
     return logger
 
-if __name__ == "__main__":
+def main():
+    # 加载配置
     config = load_config()
-    train(config) 
+    
+    # 是否使用自动调优
+    if config.get('use_auto_tuning', False):  # 从配置中读取是否使用自动调优
+        # 创建优化配置
+        opt_config = OptimizationConfig(
+            n_trials=100,
+            timeout=3600 * 24,  # 24小时
+            n_jobs=2
+        )
+        
+        # 初始化自动调器
+        auto_tuner = AutoTuner(
+            base_config=config,
+            optimization_config=opt_config,
+            study_name="pattern_transformer_optimization"
+        )
+        
+        try:
+            # 执行优化
+            results = auto_tuner.optimize()
+            
+            # 获取优化策略
+            strategy_generator = OptimizationStrategyGenerator(auto_tuner.study)
+            strategy = strategy_generator.generate_strategy()
+            
+            # 打印优化结果
+            print("Best configuration:", results['best_config'])
+            print("\nOptimization suggestions:")
+            for suggestion in strategy['suggestions']:
+                print(f"- {suggestion}")
+            
+            # 使用优化后的配置进行训练
+            optimized_config = results['best_config']
+            train(optimized_config)
+            
+        except Exception as e:
+            print(f"Optimization failed: {str(e)}")
+            print("Falling back to default configuration...")
+            train(config)  # 如果优化失败，使用默认配置
+    else:
+        # 直接使用默认配置进行训练
+        train(config)
+
+if __name__ == "__main__":
+    main() 

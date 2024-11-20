@@ -6,6 +6,7 @@ from torch.utils.data import Dataset
 from typing import Dict
 from PIL import Image
 from torchvision import transforms
+from .augmentation import PatternAugmentor
 
 class CarpetDataset(Dataset):
     def __init__(self, config: Dict, mode: str = 'train'):
@@ -28,6 +29,9 @@ class CarpetDataset(Dataset):
             print(f"val模式使用{len(self.data_folders)}个数据集")
     
         print(f"有效数据集数量：{len(self.data_folders)}")
+        
+        # 只在训练模式下初始化数据增强器
+        self.augmentor = PatternAugmentor(config) if mode == 'train' else None
     
     def __len__(self):
         return len(self.data_folders) * 2  # 每个文件夹有2张图片
@@ -55,6 +59,10 @@ class CarpetDataset(Dataset):
         ])
         
         img_tensor = transform(img)
+        
+        # 应用数据增强
+        if self.augmentor is not None:
+            img_tensor = self.augmentor(img_tensor)
         
         # 第一张图作为输入，第二张图作为目标
         if img_idx == 0:

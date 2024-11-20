@@ -23,6 +23,16 @@ model:
     dim_feedforward: 2048
     dropout: 0.1
     batch_first: true
+  feature_extractor:
+    clip_model: "openai/clip-vit-base-patch32"
+    use_feature_cache: true
+    cache_dir: "cache/clip_features"
+    
+  feature_fusion:
+    clip_feature_dim: 512
+    original_feature_dim: 512
+    fusion_dim: 512
+    dropout_rate: 0.1
 
 # 训练配置
 train:
@@ -74,22 +84,52 @@ train:
     perceptual_loss: 0.1
     # 添加其他损失项的权重
 
+  dynamic_tuning:
+    enabled: true
+    lr_adjust:
+      enabled: true
+      min_lr: 1.0e-6
+      max_lr: 1.0e-2
+      adjust_threshold: 0.3
+      adjustment_cooldown: 3
+      max_adjustments_per_epoch: 2
+    batch_size_adjust:
+      enabled: true
+      min_size: 4
+      max_size: 256
+      memory_threshold: 90
+    dropout_adjust:
+      enabled: true
+      min_dropout: 0.1
+      max_dropout: 0.5
+    logging:
+      log_adjustments: true
+      visualization: true
+
 # 数据配置
 data:
   input_size: [640, 640]
   augmentation:
     enabled: true
-    prob: 0.8
-    color_jitter:
-      brightness: 0.1
-      contrast: 0.1
-      saturation: 0.1
-      hue: 0.05
-    affine:
-      degrees: 15
-      translate: [0.1, 0.1]
-      scale: [0.9, 1.1]
-      shear: 5
+    probability: 0.5
+    max_combinations: 4
+    
+    geometric:
+      enabled: true
+      rotate_angles: [-30, -15, 0, 15, 30]
+      scale_factors: [0.8, 1.0, 1.2]
+    
+    color:
+      enabled: true
+      brightness_levels: [0.8, 1.0, 1.2]
+      contrast_levels: [0.8, 1.0, 1.2]
+      saturation_levels: [0.8, 1.0, 1.2]
+    
+    texture:
+      enabled: true
+      noise_std: 0.05
+      elastic_alpha: 50  # 预留给弹性变换
+      elastic_sigma: 5   # 预留给弹性变换
   train_ratio: 0.8
   raw_dir: "data/raw"
   batch_size: 1
@@ -152,5 +192,6 @@ training:
 
 debug:
   save_images: false  # 设置为true时保存生成的图像
+  check_augmentation: true  # 是否在训练前检查数据增强效果
 paths:
   output_dir: outputs  # 生成图像的保存目录
