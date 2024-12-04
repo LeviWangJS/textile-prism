@@ -4,6 +4,15 @@ import sys
 from pathlib import Path
 from data_collector import DataCollector
 
+def print_tree(directory, prefix=""):
+    """打印目录树结构"""
+    print(f"{prefix}└── {directory.name}/")
+    for path in sorted(directory.iterdir()):
+        if path.is_dir():
+            print_tree(path, prefix + "    ")
+        else:
+            print(f"{prefix}    └── {path.name}")
+
 def main():
     parser = argparse.ArgumentParser(description='数据收集工具')
     
@@ -23,6 +32,7 @@ def main():
     
     # status 命令
     status_parser = subparsers.add_parser('status', help='显示数据集状态')
+    status_parser.add_argument('--tree', action='store_true', help='显示目录树结构')
     
     # validate 命令
     validate_parser = subparsers.add_parser('validate', help='验证数据集')
@@ -59,11 +69,30 @@ def main():
     elif args.command == 'status':
         data_dir = Path(collector.root_dir)
         sets = list(data_dir.glob("set_*"))
+        
         print(f"\n📊 数据集状态:")
         print(f"总数据集: {len(sets)} 对")
-        print("\n最近添加的数据集:")
-        for set_dir in sorted(sets)[-5:]:
-            print(f"- {set_dir.name}")
+        
+        if args.tree:
+            print("\n📁 数据目录结构:")
+            print_tree(data_dir)
+        else:
+            print("\n最近添加的数据集:")
+            for set_dir in sorted(sets)[-5:]:
+                print(f"- {set_dir.name}")
+                
+        # 检查数据集完整性
+        incomplete = []
+        for set_dir in sets:
+            input_path = set_dir / "input.jpg"
+            target_path = set_dir / "target.jpg"
+            if not input_path.exists() or not target_path.exists():
+                incomplete.append(set_dir.name)
+        
+        if incomplete:
+            print(f"\n⚠️  发现 {len(incomplete)} 个不完整的数据集:")
+            for name in incomplete:
+                print(f"- {name}")
             
     elif args.command == 'validate':
         data_dir = Path(collector.root_dir)
@@ -74,12 +103,22 @@ def main():
         for set_dir in sets:
             input_path = set_dir / "input.jpg"
             target_path = set_dir / "target.jpg"
-            if input_path.exists() and target_path.exists():
+            
+            issues = []
+            if not input_path.exists():
+                issues.append("缺少输入图像")
+            if not target_path.exists():
+                issues.append("缺少目标图像")
+                
+            if not issues:
                 valid_count += 1
             else:
-                print(f"❌ {set_dir.name} 数据不完整")
+                print(f"❌ {set_dir.name}: {', '.join(issues)}")
                 
         print(f"\n✅ 有效数据集: {valid_count}/{len(sets)}")
+        
+        if valid_count < len(sets):
+            print("\n💡 提示: 使用 status --tree 命令查看完整的目录结构")
 
 if __name__ == "__main__":
     main() 

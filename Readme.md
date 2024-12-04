@@ -1,4 +1,4 @@
-# Textile Prism（目前还在训练中）
+# Textile Prism
 
 一个优雅的深度学习项目，致力于将各类纺织品商品效果图片转换为平面原图。
 
@@ -6,18 +6,26 @@
 - 支持多种织物类型（地毯、窗帘、毯子等）
 - 智能视角转换
 - 简单易用的数据收集工具
+- 高效的训练流程
+- 完善的可视化支持
 
 ## 项目结构
 
 ```bash
-pattern-extract/
-├── configs/        # 配置文件
-├── src/           # 源代码
-│   ├── models/    # 模型定义
-│   ├── tools/     # 工具脚本
-│   ├── trainer/   # 训练相关
-│   └── utils/     # 通用工具
-└── tests/         # 测试代码
+textile-prism/
+├── configs/          # 配置文件
+├── data/            # 数据集
+│   ├── raw/        # 原始数据
+│   ├── processed/  # 处理后的数据
+│   └── split/      # 训练验证测试集
+├── src/            # 源代码
+│   ├── models/     # 模型定义
+│   ├── data/       # 数据处理
+│   └── utils/      # 通用工具
+├── logs/           # 训练日志
+├── checkpoints/    # 模型检查点
+├── visualizations/ # 可视化结果
+└── docs/           # 文档
 ```
 
 ## 环境配置
@@ -32,35 +40,51 @@ source .venv/bin/activate  # Linux/Mac
 pip3 install -r requirements.txt
 ```
 
-## 数据集结构
+## 数据准备
 
-### 示例数据
-项目包含两组示例数据：
-1. 第一组：斜视角地毯照片及其对应的平面图
-2. 第二组：不同角度的地毯照片及其平面效果图
-
-### 添加新数据
-使用数据收集工具添加新的训练数据：
-
+1. 准备数据集：
 ```bash
-# 添加单对图像
-collect add -i path/to/input.jpg -t path/to/target.jpg
+# 处理原始数据
+python src/data/prepare_dataset.py
 
-# 查看数据集状态
-collect status
+# 划分数据集
+python src/data/split_dataset.py
+```
+
+2. 测试数据流程：
+```bash
+python -m tests.data.test_data_pipeline
 ```
 
 ## 训练模型
 
+1. 测试模型组件：
 ```bash
-# 测试环境
-python3 src/test_run.py
+python3 -m tests.models.test_model_components
+```
 
-# 开始训练
+2. 开始训练：
+```bash
 python3 src/train.py
+```
 
-# 开启实时观测
+3. 监控训练：
+```bash
+# 查看训练日志
+tail -f logs/training.log
+
+# 查看可视化结果
 tensorboard --logdir=runs
+```
+
+## 模型评估
+
+```bash
+# 运行测试
+python -m tests.models.test_model_components
+
+# 查看评估报告
+cat logs/evaluation_report.txt
 ```
 
 ## License

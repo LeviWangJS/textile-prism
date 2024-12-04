@@ -6,41 +6,50 @@ project:
 
 # 系统配置
 system:
-  device: "mps"
-  num_workers: 2
+  device: "cpu"
+  num_workers: 1
   seed: 42
 
 # 模型配置
 model:
-  name: "PatternNet"
+  name: "PatternTransformerV4"
   pretrained: true
   encoder: "resnet18"
-  feature_dim: 512
+  feature_dim: 64
   use_lightweight: true
   transformer:
-    dim: 256
-    num_heads: 8
-    dim_feedforward: 2048
-    dropout: 0.1
+    dim: 64
+    num_heads: 4
+    dim_feedforward: 256
+    dropout: 0.2
     batch_first: true
-  feature_extractor:
-    clip_model: "openai/clip-vit-base-patch32"
-    use_feature_cache: true
-    cache_dir: "cache/clip_features"
-    
+  
+  # 3D特征处理配置
+  depth_module:
+    enabled: true
+    attention_reduction: 16
+    use_residual: true
+  
+  # 空间变换配置
+  spatial_transformer:
+    enabled: true
+    multi_scale: true
+    kernel_sizes: [3, 5]
+    use_attention: true
+  
   feature_fusion:
-    clip_feature_dim: 512
-    original_feature_dim: 512
-    fusion_dim: 512
-    dropout_rate: 0.1
+    clip_feature_dim: 64
+    original_feature_dim: 64
+    fusion_dim: 64
+    dropout_rate: 0.2
 
 # 训练配置
 train:
   batch_size: 1
-  epochs: 100
-  learning_rate: 0.001
-  save_interval: 10
-  val_interval: 5
+  epochs: 50
+  learning_rate: 0.0005
+  save_interval: 5
+  val_interval: 2
   
   # 优化器配置
   optimizer:
@@ -48,92 +57,50 @@ train:
     beta1: 0.9
     beta2: 0.999
     weight_decay: 0.01
-    lr: 0.001
+    lr: 0.0005
 
   # 学习率调度器
   scheduler:
     type: 'cosine'
     params:
-      # Step LR 参数
-      step_size: 30
-      gamma: 0.1
-      # Cosine LR 参数
-      T_max: 100
+      T_max: 50
       eta_min: 0.000001
-      # ReduceLROnPlateau 参数
-      factor: 0.1
-      patience: 10
-      min_lr: 0.000001
-      mode: 'min'
 
   # 早停配置
   early_stopping:
     enabled: true
     patience: 10
     min_delta: 0.001
-    verbose: true
 
-  # 梯度裁剪配置
-  max_grad_norm: 1.0  # 最大梯度范数
-  grad_logging:
-    enabled: true
-    frequency: 10  # 每多少个batch记录一次梯度信息
-
+  # 损失函数权重
   loss_weights:
-    l1_loss: 1.0
-    perceptual_loss: 0.1
-    # 添加其他损失项的权重
+    l1: 10.0
+    perceptual: 1.0
+    style: 1.0
 
-  dynamic_tuning:
+  # 训练监控
+  monitor:
     enabled: true
-    lr_adjust:
-      enabled: true
-      min_lr: 1.0e-6
-      max_lr: 1.0e-2
-      adjust_threshold: 0.3
-      adjustment_cooldown: 3
-      max_adjustments_per_epoch: 2
-    batch_size_adjust:
-      enabled: true
-      min_size: 4
-      max_size: 256
-      memory_threshold: 90
-    dropout_adjust:
-      enabled: true
-      min_dropout: 0.1
-      max_dropout: 0.5
-    logging:
-      log_adjustments: true
-      visualization: true
+    log_interval: 10
+    save_images: true
+    num_samples: 4
 
 # 数据配置
 data:
-  input_size: [640, 640]
+  raw_dir: 'data/raw'
+  processed_dir: 'data/processed'
+  split_dir: 'data/split'
+  input_size: [256, 256]
+  batch_size: 1
+  num_workers: 1
   augmentation:
     enabled: true
-    probability: 0.5
-    max_combinations: 4
-    
-    geometric:
-      enabled: true
-      rotate_angles: [-30, -15, 0, 15, 30]
-      scale_factors: [0.8, 1.0, 1.2]
-    
-    color:
-      enabled: true
-      brightness_levels: [0.8, 1.0, 1.2]
-      contrast_levels: [0.8, 1.0, 1.2]
-      saturation_levels: [0.8, 1.0, 1.2]
-    
-    texture:
-      enabled: true
-      noise_std: 0.05
-      elastic_alpha: 50  # 预留给弹性变换
-      elastic_sigma: 5   # 预留给弹性变换
-  train_ratio: 0.8
-  raw_dir: "data/raw"
-  batch_size: 1
-  num_workers: 2
+    rotation_limit: 15
+    brightness_contrast_limit: 0.2
+    hue_saturation_limit: 0.2
+    noise_prob: 0.3
+    blur_prob: 0.3
+    flip_prob: 0.5
 
 # 输出配置
 output:
@@ -143,12 +110,14 @@ output:
 
 # 损失函数配置
 loss:
-  lambda_l1: 1.0
-  lambda_perceptual: 0.1
-  lambda_style: 0.5
-  lambda_ssim: 0.3
-  vgg_layers: [3, 8, 15, 22]
-  perceptual_weights: [1.0, 1.0, 1.0, 1.0]
+  lambda_l1: 0.4
+  lambda_perceptual: 0.7
+  lambda_style: 0.8
+  lambda_ssim: 0.15
+  lambda_depth: 0.2
+  lambda_frequency: 0.5
+  vgg_layers: [3, 8, 15]
+  perceptual_weights: [1.0, 1.0, 1.0]
 
 # 报告配置
 report:
@@ -173,13 +142,13 @@ report:
 # 可视化配置
 visualization:
   save_dir: 'runs'
-  viz_interval: 1
-  save_attention_maps: true
+  viz_interval: 2
+  save_attention_maps: false
   plot_predictions: true
-  save_interval: 100  # 每隔多少个batch保存一次图像
-  gif_fps: 10        # GIF帧率
-  gif_quality: 95    # GIF质量
-  save_gifs: true    # 是否保存GIF
+  save_interval: 200
+  gif_fps: 10
+  gif_quality: 90
+  save_gifs: false
 
 openai:
   api_key: ${OPENAI_API_KEY}
@@ -195,3 +164,28 @@ debug:
   check_augmentation: true  # 是否在训练前检查数据增强效果
 paths:
   output_dir: outputs  # 生成图像的保存目录
+
+# 评估配置
+evaluation:
+  enabled_metrics:
+    psnr: true
+    ssim: true
+    lpips: true
+    edge_accuracy: true
+    pattern_consistency: true
+    perceptual_quality: true
+
+# 训练配置
+training:
+  checkpoint:
+    save_dir: "checkpoints"
+    save_interval: 10
+    keep_last: 2
+    save_best: true
+    save_latest: true
+  
+  analysis:
+    frequency: 400
+    min_interval: 120
+    reference_generation: false
+    quality_threshold: 7.0

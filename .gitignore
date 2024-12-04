@@ -12,6 +12,20 @@ ENV/
 outputs/
 checkpoints/
 logs/
+visualizations/
+inference_results/
+test_results/
+
+# Training artifacts
+*.pth
+*.ckpt
+*.log
+*.csv
+events.out.tfevents.*
+
+# Test outputs
+*_examples.png
+test_results/data_augmentation/
 
 # IDE
 .idea/
@@ -32,9 +46,9 @@ dist/
 build/
 *.egg-info/
 
-# Runs
+# Runs and visualization
 runs/
 runs/*
-
 visualization/
-visualization/*
+
+cache/

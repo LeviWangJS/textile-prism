@@ -1,0 +1,72 @@
+split_ratios:
+  test: 0.15
+  train: 0.7
+  val: 0.15
+test_sets:
+- set_053
+- set_059
+- set_001
+- set_045
+- set_006
+- set_037
+- set_017
+- set_013
+- set_026
+- set_062
+total_sets: 64
+train_sets:
+- set_048
+- set_050
+- set_047
+- set_004
+- set_049
+- set_035
+- set_003
+- set_027
+- set_019
+- set_044
+- set_015
+- set_055
+- set_009
+- set_042
+- set_046
+- set_022
+- set_025
+- set_034
+- set_057
+- set_021
+- set_012
+- set_038
+- set_036
+- set_058
+- set_064
+- set_010
+- set_061
+- set_041
+- set_024
+- set_040
+- set_002
+- set_028
+- set_011
+- set_007
+- set_016
+- set_032
+- set_039
+- set_060
+- set_018
+- set_054
+- set_020
+- set_033
+- set_029
+- set_063
+val_sets:
+- set_031
+- set_043
+- set_008
+- set_005
+- set_023
+- set_051
+- set_056
+- set_052
+- set_014
+- set_030
