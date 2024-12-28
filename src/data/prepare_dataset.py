@@ -55,7 +55,7 @@ def validate_image(image_path):
     except Exception as e:
         return False, str(e)
 
-def process_image_pair(input_path, target_path, output_dir, size=(640, 640)):
+def process_image_pair(input_path, target_path, output_dir, size=None):
     """处理单对图像"""
     # 验证图像
     input_valid, input_msg = validate_image(input_path)
@@ -69,16 +69,13 @@ def process_image_pair(input_path, target_path, output_dir, size=(640, 640)):
         input_img = Image.open(input_path).convert('RGB')
         target_img = Image.open(target_path).convert('RGB')
         
-        # 调整尺寸
-        input_img = input_img.resize(size, Image.LANCZOS)
-        target_img = target_img.resize(size, Image.LANCZOS)
-        
-        # 保存处理后的图像
+        # 保存处理后的图像，保持原始尺寸
         output_pair_dir = output_dir / input_path.parent.name
         output_pair_dir.mkdir(parents=True, exist_ok=True)
         
-        input_img.save(output_pair_dir / 'input.jpg', quality=95)
-        target_img.save(output_pair_dir / 'target.jpg', quality=95)
+        # 使用最高质量保存
+        input_img.save(output_pair_dir / 'input.jpg', quality=100, subsampling=0)
+        target_img.save(output_pair_dir / 'target.jpg', quality=100, subsampling=0)
         
         return True, "处理成功"
     except Exception as e:
@@ -183,8 +180,7 @@ def prepare_dataset(config):
                     process_image_pair,
                     input_path,
                     target_path,
-                    processed_dir,
-                    (config['data']['input_size'][0], config['data']['input_size'][1])
+                    processed_dir
                 )
                 futures.append((set_dir.name, future))
         
